@@ -320,7 +320,7 @@ export class Command {
             if (finalCommandInput.args instanceof Collection) {
                 if (finalCommandInput.args.get(this.subcommand_argument)) {
                     const subcommandName = finalCommandInput.args.get(this.subcommand_argument);
-                    const subcommand = this.subcommands.find(subcommand => subcommand.name === subcommandName);
+                    const subcommand = this.subcommands.find(subcommand => subcommand.name === subcommandName || subcommand.aliases.includes(subcommandName));
                     if (subcommand instanceof Command) {
                         log.info("executing subcommand p/" + this.name + " " + subcommand.name);
                         const subcommandResponse = await subcommand.execute(finalCommandInput);
