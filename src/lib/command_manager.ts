@@ -3,64 +3,114 @@ import fs from "fs";
 import { Command, ValidationCheck } from "./classes/command";
 import * as log from "./log";
 
+const enum CommandEntryType {
+    /**
+     * A non-aliased identifier for a command; the primary name of the command.
+     */
+    Command = "command",
+
+    /**
+     * An alias that points to a command.
+     */
+    CommandAlias = "command alias",
+
+    /**
+     * An "subcommand root alias" refers to an alias which points to a command's subcommand.
+     * 
+     * For example, if you had a `p/warn` command that had a subcommand of `view <user>` to view warnings of a user,
+     * you could add an absolute alias of `p/warns` to the `view` subcommand so that `p/warns <user>` would be equivalent
+     * to `p/warn view <user>`.
+     */
+    SubcommandRootAlias = "subcommand root alias",
+}
+
+/**
+ * Greater indices have greater priority; that means the last element is the most prioritized.
+ */
+const COMMAND_ENTRY_TYPE_ORDERING = Object.seal([
+    CommandEntryType.SubcommandRootAlias,
+    CommandEntryType.CommandAlias,
+    CommandEntryType.Command,
+] as const);
+
+interface CommandEntry {
+    command: Command,
+    type: CommandEntryType,
+}
+
 export class CommandManager {
-    commands = {
-        base: new Collection<string, Command>(),
-        aliases: new Collection<string, Command>(),
-        normal_aliases: new Collection<string, Command>()
-    }
+    mappings = new Collection<string, CommandEntry>();
     get(name: string): Command | undefined {
-        return this.commands.base.get(name) || this.commands.aliases.get(name) || this.commands.normal_aliases.get(name);
+        return this.mappings.get(name)?.command
     };
-    async getCommands() {
-        if (this.commands.base.size > 0) return; // avoids circular dependency
-        const startOfAll = performance.now();
-        const commandFiles = fs
+    
+    async load() {
+        if (this.mappings.size > 0) return; // avoids circular dependency
+        const start = performance.now();
+        const files = fs
             .readdirSync("src/commands")
             .filter(file => file.endsWith(".ts"));
-        for (const file of commandFiles) {
+
+        for (const file of files) {
             const start = performance.now();
-            const command = await import(`../commands/${file}`);
-            if (!command.default) {
-                log.error(`command ${file} has no default export`);
+            const command = (await import(`../commands/${file}`))?.default as unknown;
+
+            if (!command) { log.error(`command ${file} has no default export`); continue; }
+            if (!(command instanceof Command)) { log.error(`command ${file} has a default export that isn't a command`); continue; }
+            
+            if (command.validation_errors.length > 0 && command.validation_errors.some((error: ValidationCheck) => error.unrecoverable)) {
+                log.error(`unrecoverable validation errors found in ${command.name}; skipping cache; errors: ${command.validation_errors.map((error: ValidationCheck) => error.message).join(", ")}`);
                 continue;
             }
-            if (this.commands.base.has(command.default.name)) {
-                log.error(`duplicate command name ${command.default.name}; skipping cache`);
-                continue;
+            
+            this.assign(command, CommandEntryType.Command, command.name)
+
+            for (const alias of command.aliases) {
+                this.assign(command, CommandEntryType.CommandAlias, alias)
             }
-            if (command.default.validation_errors.length > 0 && command.default.validation_errors.some((error: ValidationCheck) => error.unrecoverable)) {
-                log.error(`unrecoverable validation errors found in ${command.default.name}; skipping cache; errors: ${command.default.validation_errors.map((error: ValidationCheck) => error.message).join(", ")}`);
-                continue;
-            }
-            this.commands.base.set(command.default.name, command.default);
-            if (command.default.aliases) {
-                for (const alias of command.default.aliases) {
-                    if (this.commands.aliases.has(alias)) {
-                        log.error(`duplicate alias ${alias} for command ${command.default.name}; skipping alias`);
-                        continue;
-                    }
-                    this.commands.aliases.set(alias, command.default);
+
+            const subcommandDescendants = Array.from(command.subcommands); // shallow clone so deeper instances can be appended as a queue
+
+            while (subcommandDescendants.length !== 0) {
+                const subcommand = subcommandDescendants.pop()!;
+
+                for (const alias of subcommand.root_aliases) {
+                    this.assign(subcommand, CommandEntryType.SubcommandRootAlias, alias);
                 }
+
+                subcommandDescendants.push(...subcommand.subcommands);
             }
-            if (command.default.subcommands && command.default.subcommands.length > 0) { // todo: change this so that it supports subcommands of subcommands
-                for (const subcommand of command.default.subcommands) {
-                    for (const alias of subcommand.normal_aliases) {
-                        if (this.commands.normal_aliases.has(alias) || this.commands.base.has(alias)) {
-                            log.error(`duplicate normal alias ${alias} for command ${command.default.name}; skipping alias`);
-                            continue;
-                        }
-                        this.commands.normal_aliases.set(alias, command.default);
-                    }
-                }
-            }
-            log.info(`cached command ${command.default.name} in ${(performance.now() - start).toFixed(3)}ms`);
+         
+            log.info(`loaded command ${command.name} in ${(performance.now() - start).toFixed(3)}ms`);
         }
-        log.info(`cached all commands in ${(performance.now() - startOfAll).toFixed(3)}ms`);
+
+        log.info(`loaded all commands in ${(performance.now() - start).toFixed(3)}ms`);
+    }
+
+    /**
+     * @returns whether assignment was successful
+     */
+    private assign(command: Command, type: CommandEntryType, name: string) {
+        const existing = this.mappings.get(name);
+        if (existing) {
+            const priority = COMMAND_ENTRY_TYPE_ORDERING.indexOf(type);
+            const priorityExisting = COMMAND_ENTRY_TYPE_ORDERING.indexOf(existing.type);
+            const lesserPriority = priorityExisting > priority;
+            if (lesserPriority || (priorityExisting === priority)) {
+                console.error(
+                    `cannot add a ${type} w/ name "${name}" because it already exists as a ${existing.type}` +
+                    (lesserPriority ? `, which takes priority.` : ".") + " keeping previous assignment"
+                );
+                return false;
+            }
+        };
+
+        this.mappings.set(name, { command, type });
+        return true
     }
 }
 
 const manager = new CommandManager();
-await manager.getCommands();
+await manager.load();
 
 export default manager;

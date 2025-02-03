@@ -168,7 +168,14 @@ export class Command {
     contexts: InteractionContextType[] = [ InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel ];
     /* ↑↑↑ discords shit ↓↓↓ my shit */
     aliases: string[] = [];
-    normal_aliases: string[] = [];
+    /**
+     * Top-level aliases to create for subcommands.
+     * 
+     * For example: if you had a `p/warn` command that had a subcommand of `view <user>` to view warnings of a user,
+     * you could make add `root_aliases: ["warns"]` to the `view` subcommand so that so that `p/warns <user>` would
+     * be equivalent to `p/warn view <user>`.
+     */
+    root_aliases: string[] = [];
     long_description: string = "no description";
     access: CommandAccess = new CommandAccess();
     input_types: InputType[] = [ InputType.Interaction, InputType.Message ]; // which input types to enable usage for (ex. text / slash commands)
