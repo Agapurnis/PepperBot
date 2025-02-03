@@ -5,7 +5,7 @@ config();
 import process from "node:process";
 import * as log from "./log";
 import { Stream } from "node:stream";
-import { textToFile } from "./filify";
+import { textToAttachment } from "./attachment_manager";
 
 export interface MessageInput {
     content?: string;
@@ -66,10 +66,10 @@ export function fixMessage(message: Partial<MessageInput> | string): Partial<Mes
     }
     if (message.content && message.content.length > 2000) {
         log.warn("attempt to send a message longer than 2000 characters")
-        const path = textToFile(message.content, "overflowtext");
+        const attachment = textToAttachment(message.content, "overflow.txt", "the contents of the message as a file");
         message.content = "message content exceeded 2000 characters, here's a file with the text instead"
-        if (!message.files) message.files = [];
-        message.files.push(path);
+        message.files ??= [];
+        message.files.push(attachment);
     } // todo: check embeds
     return message;
 }

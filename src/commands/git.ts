@@ -2,7 +2,7 @@ import { Collection, Message } from "discord.js";
 import { Command, CommandCategory, CommandResponse } from "../lib/classes/command";
 import * as action from "../lib/discord_action";
 import simpleGit from "simple-git";
-import { textToFile } from "../lib/filify";
+import { textToAttachment } from "../lib/attachment_manager";
 
 const gitlog = new Command({
         name: 'log',
@@ -20,8 +20,8 @@ const gitlog = new Command({
         const git = simpleGit();
         const log = await git.log(['--graph', '--abbrev-commit', '--decorate', '--format=format:"%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(auto)%d%C(reset)"', '--all']);
         const logString = log.all[0].hash
-        const path = await textToFile(logString, 'gitlog');
-        await action.reply(message, { content: "here's a log of commits to the repo", files: [path], ephemeral: guildConfig.other.use_ephemeral_replies });
+        const attachment = textToAttachment(logString, 'git_log.txt', "text-based graph of commit history");
+        await action.reply(message, { content: "here's a log of commits to the repo", files: [attachment], ephemeral: guildConfig.other.use_ephemeral_replies });
         return new CommandResponse({ pipe_data: { grep_text: `here's a log of commits to the repo\n${logString}` } });
     }
 );
