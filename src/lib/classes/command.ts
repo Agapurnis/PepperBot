@@ -113,6 +113,34 @@ export class CommandAccess {
             guilds: blacklist.guilds || []
         };
     }
+
+    public test(message: Message | FormattedCommandInteraction) {
+        const { author, member, channel, guild } = message;
+        const userRoles = member?.roles instanceof GuildMemberRoleManager ? member.roles.cache.map(role => role.id) : [];
+        const guildId = guild?.id || "";
+        const channelId = channel?.id || "";
+        const userId = author.id;
+
+        const whitelistSpecified = Object.values(this.whitelist).some(list => list.length > 0);
+        const whitelisted = !whitelistSpecified ||
+            this.whitelist.users.includes(userId) ||
+            this.whitelist.roles.some(role => userRoles.includes(role)) ||
+            this.whitelist.channels.includes(channelId) ||
+            this.whitelist.guilds.includes(guildId);
+
+        const blacklistedSpecified = Object.values(this.blacklist).some(list => list.length > 0);
+        const blacklisted = blacklistedSpecified && (
+            this.blacklist.users.includes(userId) ||
+            this.blacklist.roles.some(role => userRoles.includes(role)) ||
+            this.blacklist.channels.includes(channelId) ||
+            this.blacklist.guilds.includes(guildId)
+        );
+
+        return {
+            whitelisted,
+            blacklisted,
+        }
+    }
 }
 
 export interface CommandOptionChoice {
@@ -218,53 +246,24 @@ export class Command {
         this.execute = async (input) => {
             log.info("executing command p/" + this.name + ((input._response?.from !== undefined) ? " piped from p/" + input._response?.from : ""));
             const start = performance.now();
-            const { message, input_type } = input;
-            if (!message) {
-                log.error("message is undefined in command execution");
-                return;
-            }
-            if (input_type === undefined) {
-                if (message instanceof Message) {
-                    input.input_type = InputType.Message;
-                } else {
-                    input.input_type = InputType.Interaction;
-                }
-            } else {
-                input.input_type = input_type as InputType;
-            }
-            // access check
-            const { whitelist, blacklist } = this.access;
-            const { author, member, channel, guild } = message;
-            const userRoles = member?.roles instanceof GuildMemberRoleManager ? member.roles.cache.map(role => role.id) : [];
-            const guildId = guild?.id || "";
-            const channelId = channel?.id || "";
-            const userId = author.id;
+            const { message } = input;
+            if (!message) return log.error("message is undefined in command execution");
 
-            const isWhitelisted = !Object.values(whitelist).some(list => list.length > 0) ||
-                whitelist.users.includes(userId) ||
-                whitelist.roles.some(role => userRoles.includes(role)) ||
-                whitelist.channels.includes(channelId) ||
-                whitelist.guilds.includes(guildId);
+            input.input_type ??= (message instanceof Message)
+                ? InputType.Message
+                : InputType.Interaction;
 
-            const isBlacklisted = Object.values(blacklist).some(list => list.length > 0) &&
-                (blacklist.users.includes(userId) ||
-                blacklist.roles.some(role => userRoles.includes(role)) ||
-                blacklist.channels.includes(channelId) ||
-                blacklist.guilds.includes(guildId));
+            const { whitelisted, blacklisted } = this.access.test(message);
 
-            if (!isWhitelisted || isBlacklisted) {
+            if (!whitelisted || blacklisted) {
                 let accessReply = "access check failed: ";
-                if (!isWhitelisted) {
-                    accessReply += "user/channel/guild not in whitelist; ";
-                }
-                if (isBlacklisted) {
-                    accessReply += "user/channel/guild in blacklist; ";
-                }
+                if (!whitelisted) accessReply += "user/channel/guild not in whitelist; ";
+                if (blacklisted) accessReply += "user/channel/guild in blacklist; ";
                 log.info(accessReply + "for command " + this.name);
                 action.reply(message, { content: accessReply, ephemeral: true });
                 return;
             }
-            // other checks
+
             if (!this.input_types.includes(input.input_type)) {
                 log.info("invalid input type " + input.input_type + " for command " + this.name);
                 action.reply(message, { content: `input type ${input.input_type} is not enabled for this command`, ephemeral: true });

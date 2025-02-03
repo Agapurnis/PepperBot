@@ -1,5 +1,5 @@
 import { InteractionReplyOptions, Message, MessagePayload, MessageReplyOptions, InteractionResponse, TextChannel, EmbedBuilder, AttachmentBuilder, MessageActionRowComponentBuilder, Embed, Attachment, JSONEncodable, APIAttachment, BufferResolvable, AttachmentPayload, APIEmbed, APIActionRowComponent, APIMessageActionRowComponent, ActionRowData, MessageActionRowComponentData, MessageEditOptions, MessageCreateOptions } from "discord.js"; // this import is horrific
-import { FormattedCommandInteraction } from "./classes/command";
+import { Command, CommandInvoker, FormattedCommandInteraction, InvokerType } from "./classes/command";
 import { config } from "dotenv";
 config();
 import process from "node:process";
@@ -33,6 +33,15 @@ const pingReplacements = {
     "Mister Role": /<@&\d+>/g
 }
 
+function isEmpty(message: Partial<MessageInput>): boolean {
+    return ![
+        (message.content?.length || 0) > 0,
+        (message.embeds?.length || 0) > 0,
+        (message.files?.length || 0) > 0,
+        (message.components?.length || 0) > 0,
+    ].some((value) => value)
+}
+
 export function fixMessage(message: Partial<MessageInput> | string): Partial<MessageInput> {
     if (typeof message === "string") {
         message = { content: message } as MessageInput;
@@ -50,20 +59,12 @@ export function fixMessage(message: Partial<MessageInput> | string): Partial<Mes
             }
         }
     }
-    let isEmpty = true;
-    const emptyChecks = [
-        (message.content?.length || 0) > 0,
-        (message.embeds?.length || 0) > 0,
-        (message.files?.length || 0) > 0,
-        (message.components?.length || 0) > 0,
-    ]
-    if (emptyChecks.some((value) => value)) {
-        isEmpty = false;
-    }
-    if (isEmpty) {
+
+    if (isEmpty(message)) {
         log.warn("attempt to send an empty message")
         message.content = "<empty>";
     }
+
     if (message.content && message.content.length > 2000) {
         log.warn("attempt to send a message longer than 2000 characters")
         const attachment = textToAttachment(message.content, "overflow.txt", "the contents of the message as a file");
@@ -74,16 +75,6 @@ export function fixMessage(message: Partial<MessageInput> | string): Partial<Mes
     return message;
 }
 
-export function reply(message: Message | FormattedCommandInteraction, content: Partial<MessageInput> | string): Promise<Message> | Promise<InteractionResponse> | undefined {
-    content = fixMessage(content);
-    if (message instanceof Message) {
-        return message.reply(content as string | MessagePayload | MessageReplyOptions);
-    }
-    if (message as FormattedCommandInteraction) {
-        return message.reply(content as InteractionReplyOptions);
-    }
-    return undefined;
-}
 
 export function send(channel: TextChannel, content: Partial<MessageInput> | string): Promise<Message> | undefined {
     content = fixMessage(content);
