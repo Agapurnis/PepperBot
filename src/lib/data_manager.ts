@@ -57,7 +57,8 @@ const expected_constants: string[] = [
     "emojis.json",
     "nouns.json",
     "verbs.json",
-    "the_english_lexicon.json"
+    "the_english_lexicon.json",
+    "contributors.json",
 ];
 const expectedOther: string[] = [
     "resources",

@@ -75,19 +75,14 @@ export function fixMessage(message: Partial<MessageInput> | string): Partial<Mes
     return message;
 }
 
-
-export function send(channel: TextChannel, content: Partial<MessageInput> | string): Promise<Message> | undefined {
-    content = fixMessage(content);
-    if (channel) {
-        return channel.send(content as string | MessagePayload | MessageCreateOptions);
-    }
-    return undefined;
+export function reply<T extends CommandInvoker>(invoker: T, content: Partial<MessageInput> | string): Promise<T extends Message<true> ? Message<true> : InteractionResponse> {
+    return invoker.reply(fixMessage(content)) as never
 }
 
-export function edit(message: Message | InteractionResponse, content: Partial<MessageInput> | string): Promise<Message> | undefined {
-    content = fixMessage(content);
-    if (message) {
-        return message.edit(content as string | MessagePayload | MessageEditOptions);
-    }
-    return undefined;
+export function send(channel: TextChannel, content: Partial<MessageInput> | string): Promise<Message>  {
+    return channel.send(fixMessage(content))
+}
+
+export function edit(message: Message | InteractionResponse, content: Partial<MessageInput> | string): Promise<Message> {
+    return message.edit(fixMessage(content) as string | MessagePayload | MessageEditOptions);
 }

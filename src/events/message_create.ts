@@ -1,11 +1,10 @@
 import { Events, Message } from "discord.js";
 import commands from "../lib/command_manager";
 import { fetchGuildConfig } from "../lib/guild_config_manager";
-import { CommandResponse } from "../lib/classes/command";
 import * as action from "../lib/discord_action";
-import * as util from "util";
+import { CommandInput, CommandResponse } from "../lib/classes/command";
 
-async function commandHandler(message: Message) {
+async function commandHandler(message: Message<true>) {
     if (message.author.bot) return;
     const config = await fetchGuildConfig(message.guild?.id);
 
@@ -36,7 +35,7 @@ async function commandHandler(message: Message) {
     let commandIndex = 0;
     for (const command of commandsInPipingList) {
         if (typeof command === "string") {
-            await action.reply(message, `${prefix}${command} doesnt exist :/`);
+            await action.reply(message, `${prefix}${command} doesn't exist :/`);
             return;
         }
         if (previousCommand && !previousCommand.pipable_to.includes(command.name)) {
@@ -47,13 +46,13 @@ async function commandHandler(message: Message) {
         if (!message.content.startsWith(prefix)) {
             message.content = `${prefix}${message.content.replaceAll("\\|", "|")}`;
         }
-        const commandResponse = await command.execute({
-            message,
-            _response: lastOutput,
+        const input: CommandInput = await CommandInput.new(message, command, undefined!, {
+            previous_response: lastOutput,
             will_be_piped: (commandPipingList.length > 1) && (commandIndex < commandPipingList.length - 1),
         });
-        lastOutput = commandResponse;
-        if (lastOutput === undefined) lastOutput = new CommandResponse({});
+
+        const response = await command.execute(input);
+        lastOutput = response ?? new CommandResponse({});
         lastOutput.from = command.name;
         previousCommand = command;
         commandIndex++;
@@ -62,7 +61,7 @@ async function commandHandler(message: Message) {
 
 export default {
     name: Events.MessageCreate,
-    async execute(message: Message) {
+    async execute(message: Message<true>) {
         return await Promise.all([
             commandHandler(message),
         ])

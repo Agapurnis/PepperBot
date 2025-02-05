@@ -1,7 +1,8 @@
-import { Collection } from "discord.js";
+import { REST, Routes, Collection } from "discord.js";
 import fs from "fs";
-import { Command, ValidationCheck } from "./classes/command";
 import * as log from "./log";
+import { client } from "../bot";
+import { Command, InvokerType, ValidationCheck } from "./classes/command";
 
 const enum CommandEntryType {
     /**
@@ -36,6 +37,7 @@ const COMMAND_ENTRY_TYPE_ORDERING = Object.seal([
 interface CommandEntry {
     command: Command,
     type: CommandEntryType,
+    name: string,
 }
 
 export class CommandManager {
@@ -57,7 +59,7 @@ export class CommandManager {
 
             if (!command) { log.error(`command ${file} has no default export`); continue; }
             if (!(command instanceof Command)) { log.error(`command ${file} has a default export that isn't a command`); continue; }
-            
+
             if (command.validation_errors.length > 0 && command.validation_errors.some((error: ValidationCheck) => error.unrecoverable)) {
                 log.error(`unrecoverable validation errors found in ${command.name}; skipping cache; errors: ${command.validation_errors.map((error: ValidationCheck) => error.message).join(", ")}`);
                 continue;
@@ -83,8 +85,42 @@ export class CommandManager {
          
             log.info(`loaded command ${command.name} in ${(performance.now() - start).toFixed(3)}ms`);
         }
-
+        
         log.info(`loaded all commands in ${(performance.now() - start).toFixed(3)}ms`);
+    }
+
+    /**
+     * @param target target guild to deploy to. if undefined, deploy globally
+     */
+    async deploy(target?: string) {
+        const rest = new REST().setToken(process.env.DISCORD_TOKEN!);
+        const json = Array.from(this.mappings.values())
+            .filter(({ command, type }) => type === CommandEntryType.Command && command.input_types.includes(InvokerType.Interaction))
+            .map(({ command }) => command.toJSON())
+
+        const route = target
+            ? Routes.applicationGuildCommands
+            : Routes.applicationCommands;
+            
+        await rest.put(
+            route(client.user!.id, target!),
+            { body: json },
+        );
+    }
+
+    /**
+     * @param target target guild to deploy to. if undefined, deploy globally
+     */
+    async undeploy(target?: string) {
+        const rest = new REST().setToken(process.env.DISCORD_TOKEN!);
+        const route = target
+            ? Routes.applicationGuildCommands
+            : Routes.applicationCommands;
+
+        await rest.put(
+            route(client.user!.id, target!),
+            { body: [] },
+        );
     }
 
     /**
@@ -105,12 +141,13 @@ export class CommandManager {
             }
         };
 
-        this.mappings.set(name, { command, type });
+        this.mappings.set(name, { command, type, name });
         return true
     }
 }
 
 const manager = new CommandManager();
 await manager.load();
-
+// await manager.deploy();
+// 
 export default manager;

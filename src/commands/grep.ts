@@ -1,5 +1,4 @@
-import { Collection, Message } from "discord.js";
-import { Command, CommandCategory, CommandOption, CommandOptionType, CommandResponse } from "../lib/classes/command";
+import { Command, CommandCategory, CommandOption, CommandOptionType, CommandResponse, InvokerType } from "../lib/classes/command";
 import * as action from "../lib/discord_action";
 
 const command = new Command(
@@ -8,6 +7,7 @@ const command = new Command(
         description: 'searches for a string in the piped text',
         long_description: 'searches for a string in the piped text. this command is purely for piping to, and will not work on its own.',
         category: CommandCategory.Utility,
+        input_types: [InvokerType.Message],
         options: [
             new CommandOption({
                 name: 'search',
@@ -18,24 +18,22 @@ const command = new Command(
         ],
         pipable_to: ['grep'],
     }, 
-    async function getArguments ({ message, self, guildConfig }) {
-        message = message as Message;
-        const args = new Collection();
-        const commandLength = `${guildConfig.other.prefix}${self.name}`.length;
+    async function getArguments ({ message, command, guild_config }) {
+        const commandLength = `${guild_config.other.prefix}${command.name}`.length;
         const search = message.content.slice(commandLength)?.trim();
-        args.set('search', search);
-        return args;
+        return { search }
     },
-    async function execute ({ message, piped_data, guildConfig, args }) {
+    async function execute ({ invoker, piped_data, guild_config, args }) {
+        const ephemeral = guild_config.other.use_ephemeral_replies;
         if (!piped_data?.data) {
-            await action.reply(message, { content: "this command must be piped", ephemeral: guildConfig.other.use_ephemeral_replies})
+            await action.reply(invoker, { content: "this command must be piped", ephemeral})
             return new CommandResponse({ pipe_data: { grep_text: "this command must be piped" } });
         }
         if (piped_data.data.grep_text) {
             const lines = piped_data.data.grep_text.split("\n");
-            const search = args?.get("search");
+            const search = args.search;
             if (!search) {
-                await action.reply(message, { content: "no search term provided", ephemeral: guildConfig.other.use_ephemeral_replies });
+                await action.reply(invoker, { content: "no search term provided", ephemeral });
                 return new CommandResponse({ pipe_data: { grep_text: "no search term provided" } });
             }
             const regex = /\/(.*?)\//g;
@@ -45,18 +43,18 @@ const command = new Command(
                 try {
                     const r = new RegExp(regexSearch);
                     const found = lines.filter((line: string) => line.match(r));
-                    await action.reply(message, { content: found.join("\n"), ephemeral: guildConfig.other.use_ephemeral_replies });
+                    await action.reply(invoker, { content: found.join("\n"), ephemeral });
                     return new CommandResponse({ pipe_data: { grep_text: found.join("\n") } });
                 } catch (e: any) {
-                    await action.reply(message, { content: "invalid regex: " + e.message, ephemeral: guildConfig.other.use_ephemeral_replies });
+                    await action.reply(invoker, { content: "invalid regex: " + e.message, ephemeral });
                     return new CommandResponse({ pipe_data: { grep_text: "invalid regex: " + e.message } });
                 }
             }
             const found = lines.filter((line: string) => line.includes(search));
-            await action.reply(message, { content: found.join("\n"), ephemeral: guildConfig.other.use_ephemeral_replies });
+            await action.reply(invoker, { content: found.join("\n"), ephemeral });
             return new CommandResponse({ pipe_data: { grep_text: found.join("\n") } });
         } else {
-            await action.reply(message, { content: "no grep text found", ephemeral: guildConfig.other.use_ephemeral_replies });
+            await action.reply(invoker, { content: "no grep text found", ephemeral });
             return new CommandResponse({ pipe_data: { grep_text: "no grep text found" } });
         }
     }

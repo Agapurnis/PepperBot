@@ -1,7 +1,19 @@
 import { fetchGuildConfig, GuildConfig } from "../guild_config_manager";
-import * as log from "../log";
-import { ApplicationCommandType, ApplicationCommandOptionType, PermissionsBitField, ApplicationIntegrationType, InteractionContextType, ChannelType, Message, CommandInteraction, Collection, GuildMemberRoleManager, Role, PermissionFlagsBits } from "discord.js";
+import { ApplicationCommandType, ApplicationCommandOptionType, PermissionsBitField, ApplicationIntegrationType, InteractionContextType, ChannelType, Message, CommandInteraction, GuildMemberRoleManager, Role, PermissionFlagsBits, User, Channel, Attachment, Awaitable } from "discord.js";
+import * as contributors from "../../../constants/contributors.json";
 import * as action from "../discord_action";
+import * as log from "../log";
+
+type AnyObject = Record<any, any>
+type EmptyObject = Record<any, never>
+
+function pick<T, K extends keyof T>(value: T, keys: K[]): { [P in K]: T[P] } {
+    const obj = {} as { [P in K]: T[P] }
+    for (const key of keys) {
+        obj[key] = value[key]
+    }
+    return obj
+}
 
 export class CommandResponse {
     error: boolean = false;
@@ -13,9 +25,9 @@ export class CommandResponse {
     }
 }
 
-export type CommandFunction = ({}: Partial<CommandInput>) => any;
-export type ExecuteFunction = ({}: CommandInput) => any;
-export type GetArgumentsFunction = ({}: CommandInput) => any;
+export type CommandFunction<F extends AnyObject, P extends AnyObject, I extends InvokerType> = <II extends I>(input: CommandInput<F, P, II, false>) => any;
+export type ExecuteFunction<F extends AnyObject, P extends AnyObject, I extends InvokerType> = <II extends I>(input: Omit<CommandInput<F, P, II, true>, "enrich">) => Awaitable<CommandResponse | void>;
+export type GetArgumentsFunction<A extends AnyObject, I extends InvokerType> = I extends InvokerType.Message ? (input: CommandInput<AnyObject, AnyObject, InvokerType.Message, false>) => Awaitable<A> : undefined | null | (() => Awaitable<void | never | EmptyObject>)
 
 export class PipedData {
     from: string | undefined = "";
@@ -30,23 +42,29 @@ export interface FormattedCommandInteraction extends CommandInteraction {
     author: Message["author"];
 }
 
-export enum InputType {
-    Interaction,
-    Message,
-}
 
-export enum CommandOptionType {
-    SubCommand = ApplicationCommandOptionType.Subcommand,
-    SubCommandGroup = ApplicationCommandOptionType.SubcommandGroup,
-    String = ApplicationCommandOptionType.String,
-    Integer = ApplicationCommandOptionType.Integer,
-    Boolean = ApplicationCommandOptionType.Boolean,
-    User = ApplicationCommandOptionType.User,
-    Channel = ApplicationCommandOptionType.Channel,
-    Role = ApplicationCommandOptionType.Role,
-    Mentionable = ApplicationCommandOptionType.Mentionable,
-    Number = ApplicationCommandOptionType.Number,
-    Attachment = ApplicationCommandOptionType.Attachment,
+export const CommandOptionType = ApplicationCommandOptionType;
+export type CommandOptionType = ApplicationCommandOptionType;
+export namespace CommandOptionType {
+    export type Value <T extends CommandOptionType> =
+        | T extends ApplicationCommandOptionType.Subcommand ? never // unsupported
+        : T extends ApplicationCommandOptionType.SubcommandGroup ? never // unsupported
+        : T extends ApplicationCommandOptionType.String ? string
+        : T extends ApplicationCommandOptionType.Integer ? number
+        : T extends ApplicationCommandOptionType.Boolean ? boolean
+        : T extends ApplicationCommandOptionType.User ? User
+        : T extends ApplicationCommandOptionType.Channel ? Channel
+        : T extends ApplicationCommandOptionType.Role ? Role
+        : T extends ApplicationCommandOptionType.Mentionable ? User | Role
+        : T extends ApplicationCommandOptionType.Number ? number
+        : T extends ApplicationCommandOptionType.Attachment ? Attachment
+        : never;
+
+    export type Numeric =
+        | ApplicationCommandOptionType.Number
+        | ApplicationCommandOptionType.Integer
+
+    export type ChoicesUsable = Numeric | ApplicationCommandOptionType.String
 }
 
 export enum CommandCategory {
@@ -61,22 +79,88 @@ export enum CommandCategory {
     Other
 }
 
-export interface CommandInput {
-    _response: CommandResponse | undefined;
-    message: Message | FormattedCommandInteraction;
-    guildConfig: GuildConfig;
-    args: Collection<any, any> | undefined,
-    command: string;
-    input_type: InputType;
-    bot_is_admin: boolean;
-    piped_data: PipedData | undefined;
-    will_be_piped: boolean;
-    self: Command;
+export enum InvokerType {
+    Interaction = "interaction",
+    Message = "message",
+}
+
+export type CommandInvoker<T extends InvokerType = InvokerType> = {
+    [InvokerType.Message]: Message<true>, // We wouldn't be able to see the message if it weren't in the guild
+    [InvokerType.Interaction]: FormattedCommandInteraction
+}[T]
+
+interface ExtraCommandInputData {
+    will_be_piped: boolean,
+    piped_data?: PipedData,
+    previous_response?: CommandResponse
+}
+
+export class CommandInput<
+    F extends AnyObject = AnyObject,
+    P extends AnyObject = AnyObject,
+    I extends InvokerType = InvokerType,
+    E extends boolean = true,
+    A = E extends false
+        ? I extends InvokerType.Message ? undefined : F & { [K in Exclude<keyof P, keyof F>]?: undefined }
+        : I extends InvokerType.Message
+            ? P & { [K in Exclude<keyof F, keyof P>]?: undefined }
+            : F & { [K in Exclude<keyof P, keyof F>]?: undefined }
+> implements ExtraCommandInputData {
+    args: A;
+    message: I extends InvokerType.Message ? Message<true> : null;
+    interaction: I extends InvokerType.Interaction ? CommandInvoker : null;
+
+    // async constructor
+    public static async new<
+        F extends AnyObject = AnyObject,
+        P extends AnyObject = AnyObject,
+        I extends InvokerType = InvokerType,
+        E extends boolean = true,
+        A = E extends false
+            ? I extends InvokerType.Message ? undefined : F & { [K in Exclude<keyof P, keyof F>]?: undefined }
+            : I extends InvokerType.Message
+                ? P & { [K in Exclude<keyof F, keyof P>]?: undefined }
+                : F & { [K in Exclude<keyof P, keyof F>]?: undefined }
+    >(invoker: CommandInvoker<I>, command: Command<any, I, F, P>, args: A, extra: ExtraCommandInputData) {
+        const input = new this(invoker, command, args, extra);
+        input.guild_config = await fetchGuildConfig(invoker.guildId!);
+        return input
+    }
+    
+    private constructor(invoker: CommandInvoker<I>, public command: Command<any, I, F, P>, args: A, extra: ExtraCommandInputData) {
+        this.args = args;
+        this.invoker = invoker;
+        this.invoker_type = ((invoker instanceof Message)
+            ? InvokerType.Message
+            : InvokerType.Interaction
+        ) as I;
+
+        this.message = (invoker instanceof Message ? invoker : null) as never;
+        this.interaction =(invoker instanceof Message ? null : invoker) as never;
+
+        Object.assign(this, extra)
+    }
+
+    enrich(parsed?: P | null | undefined | void): asserts this is CommandInput<F, P, I, true> {
+        if (parsed) this.args = parsed as unknown as A;
+    }
+    
+    is_message(): this is CommandInput<never, P, InvokerType.Message, E> { return this.invoker_type === InvokerType.Message }
+    is_interaction(): this is CommandInput<F, never, InvokerType.Interaction, E> { return this.invoker_type === InvokerType.Interaction }
+
+    invoker: CommandInvoker<I>;
+    invoker_type: I;
+    guild_config!: GuildConfig;
+    self = this;
+
+    previous_response: CommandResponse | undefined;
+    piped_data?: PipedData;
+    will_be_piped!: boolean;
 }
 
 export interface Contributor {
     name: string;
-    userid: string;
+    user_id: string;
 }
 
 export interface ValidationCheck {
@@ -148,19 +232,32 @@ export interface CommandOptionChoice {
     value: string;
 }
 
-export class CommandOption {
-    name: string = "option";
-    description: string = "no description";
-    type: CommandOptionType = CommandOptionType.String;
-    required: boolean = false;
-    choices: CommandOptionChoice[] | undefined = [];
-    channel_types: ChannelType[] | undefined = undefined;
+type RequiredCommandOptionProperties = "name" | "type"
+export class CommandOption<
+    const T extends CommandOptionType = CommandOptionType,
+    const K extends string = string,
+    const R extends boolean = false,
+> {
+    name!: K;
+    type!: T;
+    required: R = false as R;
+    description = "no description";
+    choices: T extends CommandOptionType.ChoicesUsable ? CommandOptionChoice[] : [] = [] as never;
+    channel_types?: ChannelType[]
+
     /* ↑↑↑ discords shit ↓↓↓ my shit */
-    long_description: string = "no description"
-    deployed: boolean = true;
+    deployed = true;
+    long_description = "no description"
     validation_errors: ValidationCheck[] = []; // errors that occur during command validation, DO NOT ADD THINGS TO THIS! 
 
-    constructor(data: Partial<CommandOption>) {
+    constructor(
+        data: 
+            & Partial<Omit<CommandOption<T, K, R>, RequiredCommandOptionProperties>>
+            & Pick<        CommandOption<T, K, R>, RequiredCommandOptionProperties>
+    ) {
+        if (!data.long_description && data.description) data.long_description = data.description;
+        Object.assign(this, { ...data });
+        
         const validationChecks = [
             { condition: this.name.length > 32, message: "command option name may not exceed 32 characters", unrecoverable: true },
             { condition: this.description.length > 100, message: "command option description may not exceed 100 characters", unrecoverable: true },
@@ -176,24 +273,43 @@ export class CommandOption {
         if (this.validation_errors.length > 0) {
             return;
         }
+    }
 
-        if (!data.long_description && data.description) data.long_description = data.description;
-        Object.assign(this, { ...data });
+    toJSON() {
+        return pick(this, ["name", "description", "type", "required", "choices", "channel_types"])
     }
 }
+
+namespace CommandOption {
+    export type ToObject<T extends readonly CommandOption[], O = {}> =
+        | T["length"] extends 0 ? O : T extends readonly [
+            CommandOption<infer T, infer K, infer R>,
+            ...infer L extends CommandOption[]
+        ] ? ToObject<L, O & (R extends true
+            ? { [P in K] : CommandOptionType.Value<T> }
+            : { [P in K]?: CommandOptionType.Value<T> }
+        )> : O
+}
+
 
 function defaultCommandFunction({ command = "" }) {
     log.error("undefined command function for " + command)
 }
 
-export class Command {
-    name: string = "cmd";
-    description: string = "no description";
-    type: ApplicationCommandType = ApplicationCommandType.ChatInput;
-    options: CommandOption[] = [];
-    default_member_permissions: PermissionsBitField | undefined = undefined;
-    integration_types: ApplicationIntegrationType[] = [ ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall ];
-    contexts: InteractionContextType[] = [ InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel ];
+export class Command<
+    const S extends CommandOption<CommandOptionType, string, any>[] = CommandOption[], // slash command argument definition
+    const I extends InvokerType = InvokerType, // invocation methods 
+    const F extends AnyObject = S["length"] extends 0 ? EmptyObject : CommandOption.ToObject<S>, // inferred arguments from slash command definition + subcommand
+    const P extends AnyObject = F, // arguments from manual parsing
+> {
+    name!: string;
+    type = ApplicationCommandType.ChatInput;
+    description = "no description";
+    options: S = [] as unknown as S;
+    default_member_permissions?: PermissionsBitField;
+    integration_types = [ ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall ];
+    contexts = [ InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel ];
+    nsfw = false
     /* ↑↑↑ discords shit ↓↓↓ my shit */
     aliases: string[] = [];
     /**
@@ -204,22 +320,30 @@ export class Command {
      * be equivalent to `p/warn view <user>`.
      */
     root_aliases: string[] = [];
-    long_description: string = "no description";
-    access: CommandAccess = new CommandAccess();
-    input_types: InputType[] = [ InputType.Interaction, InputType.Message ]; // which input types to enable usage for (ex. text / slash commands)
-    deployed: boolean = true; // if it gets deployed as a slash command
-    allow_external_guild: boolean = false; // should it be usable in guilds without administrator permission? (thats the only way to detect it)
-    subcommands: Command[] = [];
+    long_description = "no description";
+    access = new CommandAccess();
+    /**
+     * Which ways this command can be invoked, such as through slash commands or a prefixed message.
+     */
+    input_types: I[] = [ InvokerType.Interaction, InvokerType.Message ] as I[];
+    allow_external_guild = false; // should it be usable in guilds without administrator permission? (thats the only way to detect it)
+    subcommands: Command<any, any, any, any>[] = [] as any;
     pipable_to: string[] = []; // array of command names which output may be piped to
-    contributors: Contributor[] = [{ name: "ayeuhugyu", userid: "440163494529073152"}];
-    subcommand_argument: string = "subcommand"
+    contributors: Contributor[] = [contributors.ayeuhugyu];
+    subcommand_argument = "subcommand"
     validation_errors: ValidationCheck[] = []; // errors that occur during command validation, DO NOT ADD THINGS TO THIS! 
     category: CommandCategory = CommandCategory.Other;
-    _execute_raw: ExecuteFunction = defaultCommandFunction;
-    get_arguments: GetArgumentsFunction = defaultCommandFunction;
-    execute: CommandFunction = defaultCommandFunction;
+    execute: CommandFunction<F, P, I> = defaultCommandFunction as never;
 
-    constructor(data: Partial<Command>, getArguments: GetArgumentsFunction, execute: ExecuteFunction) {
+    toJSON() {
+       return pick(this, ["name", "description", "type", "options", "default_member_permissions", "integration_types", ]);
+    }
+
+    constructor(
+        data: Partial<Omit<Command<S, I, F, P>, "name">> & { name: string },
+        private parse_arguments: GetArgumentsFunction<P, I>,
+        private execute_internal: ExecuteFunction<F, P, I>
+    ) {
         if (!data.long_description && data.description) data.long_description = data.description;
         Object.assign(this, { ...data });
         const validationChecks = [
@@ -239,101 +363,78 @@ export class Command {
         if (this.validation_errors.length > 0) {
             return;
         }
-        
-        this._execute_raw = execute;
-        this.get_arguments = getArguments;
         // #region COMMAND EXECUTION
-        this.execute = async (input) => {
-            log.info("executing command p/" + this.name + ((input._response?.from !== undefined) ? " piped from p/" + input._response?.from : ""));
+        this.execute = async (input: CommandInput<F, P, I, false>) => {
+            log.info("executing command p/" + this.name + ((input.previous_response?.from !== undefined) ? " piped from p/" + input.previous_response?.from : ""));
             const start = performance.now();
-            const { message } = input;
-            if (!message) return log.error("message is undefined in command execution");
+            const { invoker } = input;
+            if (!invoker) return log.error("invoker is undefined in command execution");
 
-            input.input_type ??= (message instanceof Message)
-                ? InputType.Message
-                : InputType.Interaction;
+            const invoker_type = (invoker instanceof Message)
+                ? InvokerType.Message
+                : InvokerType.Interaction;
 
-            const { whitelisted, blacklisted } = this.access.test(message);
+            const { whitelisted, blacklisted } = this.access.test(invoker);
 
             if (!whitelisted || blacklisted) {
                 let accessReply = "access check failed: ";
                 if (!whitelisted) accessReply += "user/channel/guild not in whitelist; ";
                 if (blacklisted) accessReply += "user/channel/guild in blacklist; ";
                 log.info(accessReply + "for command " + this.name);
-                action.reply(message, { content: accessReply, ephemeral: true });
+                action.reply(invoker, { content: accessReply, ephemeral: true });
                 return;
             }
 
-            if (!this.input_types.includes(input.input_type)) {
-                log.info("invalid input type " + input.input_type + " for command " + this.name);
-                action.reply(message, { content: `input type ${input.input_type} is not enabled for this command`, ephemeral: true });
+            if (!this.input_types.includes(invoker_type as I)) {
+                log.info("invalid input type " + invoker_type + " for command " + this.name);
+                action.reply(invoker, { content: `input type \"${invoker_type}\" is not enabled for this command`, ephemeral: true });
                 return;
             }
 
             if (!this.contexts.includes(InteractionContextType.Guild)) {
-                if (message.guild) {
+                if (invoker.guild) {
                     log.info("guild context is not enabled for command " + this.name);
-                    action.reply(message, { content: "this command is not enabled in guilds", ephemeral: true });
+                    action.reply(invoker, { content: "this command is not enabled in guilds", ephemeral: true });
                     return;
                 }
             }
             // todo: add context checks for bot dm and private channel
 
-            if (!message.guild?.members.me?.permissions.has(PermissionFlagsBits.Administrator)) {
-                input.bot_is_admin = false;
-                return;
-            } else {
-                input.bot_is_admin = true;
-            }
+            const bot_is_admin = invoker.guild?.members.me?.permissions.has(PermissionFlagsBits.Administrator) || false;
 
-            if (!this.allow_external_guild && !input.bot_is_admin) {
+            if (!this.allow_external_guild && !bot_is_admin) {
                 log.info("external guilds are not enabled for command " + this.name);
-                action.reply(message, { content: "this command is not enabled in guilds where i dont have administrator", ephemeral: true });
+                action.reply(invoker, { content: "this command is not enabled in guilds where i don't have administrator", ephemeral: true });
                 return;
             }
 
-            // todo: add subcommand support
-            if (!input.message) return;
-            let finalCommandInput: CommandInput = {
-                message: input.message!,
-                guildConfig: input.guildConfig || await fetchGuildConfig(input.message!.guild?.id || ""),
-                args: input.args || undefined,
-                command: this.name,
-                input_type: input.input_type,
-                bot_is_admin: input.bot_is_admin,
-                piped_data: input.piped_data || new PipedData(input._response?.from || undefined, input._response?.pipe_data) || undefined,
-                _response: input._response,
-                will_be_piped: input.will_be_piped || false,
-                self: this
-            }
-            if (!finalCommandInput.args) {
-                if (finalCommandInput.input_type === InputType.Interaction) {
-                    log.warn("slash command failed to provide arguments for command " + this.name);
-                } else {
-                    finalCommandInput.message = finalCommandInput.message as Message;
-                    finalCommandInput.args = await this.get_arguments(finalCommandInput);
-                    log.info("fetched arguments for command " + this.name);
+            input.enrich(input.is_message() ? (await this.parse_arguments?.(input) ?? {}) as P : undefined);
+            input.piped_data = new PipedData(input.previous_response?.from, input.previous_response?.pipe_data)
+
+            if (this.subcommand_argument in input.args) {
+                const subcommand = this.subcommands.find(subcommand => (
+                    subcommand.name === input.args[this.subcommand_argument] || 
+                    subcommand.aliases.includes(input.args[this.subcommand_argument])
+                ));
+                
+                if (subcommand === undefined) {
+                    // pass to default executor
+                    const response = await this.execute_internal(input);
+                    log.info("executed command p/" + this.name + " in " + ((performance.now() - start).toFixed(3)) + "ms");
+                    return response;
                 }
+
+                if (input.is_message()) {
+                    input.enrich(subcommand.parse_arguments?.(input) ?? {})
+                }
+
+                log.info("executing subcommand p/" + this.name + " " + subcommand.name);
+                const response = await subcommand.execute(input);
+                log.info("executed subcommand p/" + this.name + " " + subcommand.name + " in " + ((performance.now() - start).toFixed(3)) + "ms");
+                return response;
             }
 
-            if (finalCommandInput.args instanceof Collection) {
-                if (finalCommandInput.args.get(this.subcommand_argument)) {
-                    const subcommandName = finalCommandInput.args.get(this.subcommand_argument);
-                    const subcommand = this.subcommands.find(subcommand => subcommand.name === subcommandName || subcommand.aliases.includes(subcommandName));
-                    if (subcommand instanceof Command) {
-                        log.info("executing subcommand p/" + this.name + " " + subcommand.name);
-                        const subcommandResponse = await subcommand.execute(finalCommandInput);
-                        log.info("executed subcommand p/" + this.name + " " + subcommand.name + " in " + ((performance.now() - start).toFixed(3)) + "ms");
-                        return subcommandResponse;
-                    } else {
-                        const response = await this._execute_raw(finalCommandInput);
-                        log.info("executed command p/" + this.name + " in " + ((performance.now() - start).toFixed(3)) + "ms");
-                        return response;
-                    }
-                }
-            }
-
-            const response = await this._execute_raw(finalCommandInput);
+            const response = await this.execute_internal(input);
             log.info("executed command p/" + this.name + " in " + ((performance.now() - start).toFixed(3)) + "ms");
             return response;
         };

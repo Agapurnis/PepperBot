@@ -9,23 +9,21 @@ const command = new Command(
         category: CommandCategory.Debug,
         pipable_to: ['test', 'grep'],
     }, 
-    async function getArguments () {
-        return undefined;
-    },
-    async function execute ({ message, piped_data, will_be_piped, guildConfig }) {
+    undefined,
+    async function execute ({ invoker, piped_data, will_be_piped, guild_config }) {
         const start = performance.now();
-        const sent = await action.reply(message, { content: "awaiting response...", ephemeral: guildConfig.other.use_ephemeral_replies });
-        if (!sent) return;
+        const sent = await action.reply(invoker, { content: "awaiting response...", ephemeral: guild_config.other.use_ephemeral_replies });
         const end = performance.now();
+        if (!sent) return;
         if (will_be_piped) {
             action.edit(sent, { content: `response time: ${(end - start).toFixed(3)}ms` })
-            return new CommandResponse({ pipe_data: { start: start, grep_text: `response time: ${(end - start).toFixed(3)}ms` } });
+            return new CommandResponse({ pipe_data: { start } });
         } else if (piped_data?.data) {
             action.edit(sent, { content: `response time: ${(end - start).toFixed(3)}ms, totaled to ${(end - piped_data.data.start).toFixed(3)}ms` })
-            return new CommandResponse({ pipe_data: { start: piped_data.data.start, end: end, grep_text: `response time: ${(end - start).toFixed(3)}ms, totaled to ${(end - piped_data.data.start).toFixed(3)}ms` } });
+            return new CommandResponse({ pipe_data: { start: piped_data.data.start, end } });
         } else {
             action.edit(sent, { content: `response time: ${(end - start).toFixed(3)}ms` })
-            return new CommandResponse({ pipe_data: { grep_text: `response time: ${(end - start).toFixed(3)}ms` } });
+            return new CommandResponse({});
         }
     }
 );

@@ -1,5 +1,6 @@
+import * as contributors from "../../constants/contributors.json";
 import * as discord from "discord.js";
-import { Command, CommandAccess, CommandCategory, CommandOption, CommandOptionType, CommandResponse } from "../lib/classes/command";
+import { Command, CommandAccess, CommandCategory, CommandOption, CommandOptionType, CommandResponse, InvokerType } from "../lib/classes/command";
 import * as action from "../lib/discord_action";
 import fsExtra from "fs-extra";
 import fs from "node:fs";
@@ -28,38 +29,38 @@ const command = new Command(
                 required: true
             })
         ],
-        deployed: false,
+        input_types: [InvokerType.Message],
         access: new CommandAccess({
-            users: ["440163494529073152", "406246384409378816"]
+            users: [
+                contributors.ayeuhugyu.user_id,
+                contributors.homomorphist.user_id,
+            ]
         }, {}),
         pipable_to: ['grep'],
     }, 
-    async function getArguments ({ self, message, guildConfig }) {
-        message = message as discord.Message;
-        const args = new discord.Collection();
-        const commandLength = `${guildConfig.other.prefix}${self.name}`.length;
+    async function getArguments ({ command, message, guild_config }) {
+        const commandLength = `${guild_config.other.prefix}${command.name}`.length;
         const code = message.content.slice(commandLength)?.trim();
-        args.set('code', code);
-        return args;
+        return { code }
     },
-    async function execute ({ message, args }) {
-        if (!args?.get("code")) {
-            action.reply(message, "tf u want me to eval");
+    async function execute ({ invoker, args }) {
+        const { code } = args;
+        if (!code) {
+            action.reply(invoker, "tf u want me to eval");
             return new CommandResponse({ pipe_data: { grep_text: "tf u want me to eval" }});
         }
         try {
-            const value = "hello world"
             const result = await (async function () {
-                return await eval(args.get("code"));
+                return await eval(code);
             })();
             if (result !== undefined) {
-                action.reply(message, `result: \`\`\`${result}\`\`\``);
+                action.reply(invoker, `result: \`\`\`${result}\`\`\``);
                 return new CommandResponse({ pipe_data: { grep_text: `result: \`\`\`${result}\`\`\`` }});
             }
-            action.reply(message, "no error generated, no result returned.");
+            action.reply(invoker, "no error generated, no result returned.");
             return;
         } catch (e) {
-            action.reply(message, `\`\`\`${e}\`\`\``);
+            action.reply(invoker, `\`\`\`${e}\`\`\``);
             return new CommandResponse({ pipe_data: { grep_text: `\`\`\`${e}\`\`\`` }});
         }
     }
