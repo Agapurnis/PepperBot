@@ -136,7 +136,7 @@ export class CommandInput<
         ) as I;
 
         this.message = (invoker instanceof Message ? invoker : null) as never;
-        this.interaction =(invoker instanceof Message ? null : invoker) as never;
+        this.interaction = (invoker instanceof Message ? null : invoker) as never;
 
         Object.assign(this, extra)
     }
@@ -246,8 +246,9 @@ export class CommandOption<
     channel_types?: ChannelType[]
 
     /* ↑↑↑ discords shit ↓↓↓ my shit */
-    deployed = true;
-    long_description = "no description"
+    deployed: boolean = true;
+    long_description: string = "no description"
+    long_requirements: string | undefined = undefined; // more detailed version of the "required" option, allows you to write stuff like "required if b is undefined"
     validation_errors: ValidationCheck[] = []; // errors that occur during command validation, DO NOT ADD THINGS TO THIS! 
 
     constructor(
@@ -321,6 +322,8 @@ export class Command<
      */
     root_aliases: string[] = [];
     long_description = "no description";
+    argument_order: string = ""; // this is not an array because some commands dont require argument orders or have Strange Ones, but the general convention is to just list the arguments in the order the getArguments function looks for them and then put <> around it, ex. <arg1> <arg2>
+    example_usage: string | string[] = ""; // example usage so its easy to know how to use it
     access = new CommandAccess();
     /**
      * Which ways this command can be invoked, such as through slash commands or a prefixed message.

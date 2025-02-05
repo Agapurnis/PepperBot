@@ -37,6 +37,8 @@ const command = new Command(
             ]
         }, {}),
         pipable_to: ['grep'],
+        example_usage: "p/eval console.log(\"hello world\")",
+        aliases: ["evaluate"]
     }, 
     async function getArguments ({ command, message, guild_config }) {
         const commandLength = `${guild_config.other.prefix}${command.name}`.length;

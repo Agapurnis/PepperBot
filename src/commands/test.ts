@@ -7,7 +7,9 @@ const command = new Command(
         description: 'returns the time it takes for a message to be sent and recieved',
         long_description: 'returns the time it takes for a message to be sent to discord\'s servers and then recieved back',
         category: CommandCategory.Debug,
-        pipable_to: ['test', 'grep'],
+        pipable_to: ['test'],
+        example_usage: "p/test",
+        aliases: ["ping"],
     }, 
     undefined,
     async function execute ({ invoker, piped_data, will_be_piped, guild_config }) {

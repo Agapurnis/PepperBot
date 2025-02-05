@@ -1,4 +1,4 @@
-import { ayeuhugyu } from "../../constants/contributors.json";
+import { ayeuhugyu, homomorphist } from "../../constants/contributors.json";
 import { Command, CommandAccess, CommandCategory, CommandOption, CommandOptionType, InvokerType } from "../lib/classes/command";
 import * as action from "../lib/discord_action";
 import commands from "../lib/command_manager";
@@ -38,7 +38,7 @@ const deploy = new Command(
         category: CommandCategory.Debug,
         input_types: [InvokerType.Message],
         subcommands: [revoke],
-        access: new CommandAccess({ users: [ayeuhugyu.user_id] }),
+        access: new CommandAccess({ users: [ayeuhugyu.user_id, homomorphist.user_id] }),
         options: [
             new CommandOption({
                 name: 'subcommand',

@@ -52,14 +52,6 @@ function verifyFile(path: string, folder: boolean = false, unrecoverableIfNotExi
     }
 }
 
-const expected_constants: string[] = [
-    "deepwoken_names.json",
-    "emojis.json",
-    "nouns.json",
-    "verbs.json",
-    "the_english_lexicon.json",
-    "contributors.json",
-];
 const expectedOther: string[] = [
     "resources",
     "resources/sounds",
@@ -76,15 +68,23 @@ const expectedLogs: string[] = [
     "fatal.log",
     "global.log",
 ]
+const nonFatalEnvVariables = [
+    { key: "DISCORD_CLIENT_SECRET", message: "missing DISCORD_CLIENT_SECRET in .env; some features may not work" },
+    { key: "WEBHOOK_TOKEN", message: "missing WEBHOOK_TOKEN in .env; some features may not work" },
+    { key: "OPENAI_API_KEY", message: "missing OPENAI_API_KEY in .env; some features may not work" },
+    { key: "GOOGLE_API_KEY", message: "missing GOOGLE_API_KEY in .env; some features may not work" },
+    { key: "GOOGLE_CUSTOM_SEARCH_ENGINE_ID", message: "missing GOOGLE_CUSTOM_SEARCH_ENGINE_ID in .env; some features may not work" },
+    { key: "ADOBE_API_KEY", message: "missing ADOBE_API_KEY in .env; some features may not work" },
+    { key: "LASTFM_API_KEY", message: "missing LASTFM_API_KEY in .env; some features may not work" },
+];
+
+let dataVerified = false;
 
 export function verifyData() {
     log.info("verifying data...");
     let responses: VerificationResponse[] = [];
     for (const folder of expectedOther) {
         responses.push(verifyFile(folder, true, false));
-    }
-    for (const file of expected_constants) {
-        responses.push(verifyFile(`constants/${file}`, false, true));
     }
     for (const file of expectedLogs) {
         responses.push(verifyFile(`logs/${file}`, false, false));
@@ -94,9 +94,29 @@ export function verifyData() {
         log.error("missing DISCORD_TOKEN in .env");
         responses.push({ error: true, message: "missing DISCORD_TOKEN in .env", unrecoverable: true });
     }
-    // TODO: verify .env file
 
+    for (const { key, message } of nonFatalEnvVariables) {
+        if (process.env[key] === undefined) {
+            log.error(message);
+            responses.push({ error: true, message, unrecoverable: false });
+        }
+    }
+
+    // TODO: verify .env file
+    dataVerified = true;
     return responses;
+}
+if (!dataVerified) {
+    const verificationResponses = verifyData();
+    let unrecoverable = verificationResponses.filter((response) => response.unrecoverable);
+    if (unrecoverable.length > 0) {
+        console.error("unrecoverable errors found:");
+        unrecoverable.forEach((response) => {
+            console.error(response.message);
+        });
+        console.error("fix the above errors and try again. you may have cloned the repository incorrectly, or you are missing .env properties.");
+        process.exit(1);
+    }
 }
 
 const database = knex({

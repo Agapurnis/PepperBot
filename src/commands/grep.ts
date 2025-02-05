@@ -17,6 +17,7 @@ const command = new Command(
             })
         ],
         pipable_to: ['grep'],
+        example_usage: "p/git log | grep months",
     }, 
     async function getArguments ({ message, command, guild_config }) {
         const commandLength = `${guild_config.other.prefix}${command.name}`.length;
@@ -31,10 +32,15 @@ const command = new Command(
         }
         if (piped_data.data.grep_text) {
             const lines = piped_data.data.grep_text.split("\n");
-            const search = args.search;
+            let search = args.search;
             if (!search) {
                 await action.reply(invoker, { content: "no search term provided", ephemeral });
                 return new CommandResponse({ pipe_data: { grep_text: "no search term provided" } });
+            }
+            let count = false;
+            if (search.includes("-c") && !search.includes("\\-c")) {
+                search = search.replace("-c", "");
+                count = true
             }
             const regex = /\/(.*?)\//g;
             const regexMatches = [...search.matchAll(regex)].map(match => match[1]);
