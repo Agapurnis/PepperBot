@@ -40,8 +40,8 @@ const command = new Command(
         example_usage: "p/eval console.log(\"hello world\")",
         aliases: ["evaluate"]
     }, 
-    async function getArguments ({ command, message, guild_config }) {
-        const commandLength = `${guild_config.other.prefix}${command.name}`.length;
+    async function getArguments ({ message, command_name_used, guild_config }) {
+        const commandLength = `${guild_config.other.prefix}${command_name_used}`.length;
         const code = message.content.slice(commandLength)?.trim();
         return { code }
     },

@@ -55,9 +55,9 @@ const join = new Command(
             channel_types: [ChannelType.GuildVoice, ChannelType.GuildStageVoice]
         })]
     },
-    async function getArguments({ message, command, guild_config }) {
-        const prefix = `${guild_config.other.prefix}${command.name} join`.length;
-        return { channel: message.content.slice(prefix).trim() }
+    async function getArguments({ message, command_name_used, guild_config }) {
+        const before = `${guild_config.other.prefix}${command_name_used} join`.length;
+        return { channel: message.content.slice(before).trim() }
     },
     async function execute({ self, invoker, message, interaction, args, guild_config }) {
         const channel = (typeof args.channel === "object") ? args.channel : await (async () => {
@@ -125,8 +125,8 @@ const command = new Command(
             }),
         ],
     }, 
-    async function getArguments ({ message, command, guild_config }) {
-        const commandLength = `${guild_config.other.prefix}${command.name}`.length;
+    async function getArguments ({ message, command_name_used, guild_config }) {
+        const commandLength = `${guild_config.other.prefix}${command_name_used}`.length;
         const subcommand = message.content.slice(commandLength).trim().split(" ")[0];
         return { subcommand }
     },

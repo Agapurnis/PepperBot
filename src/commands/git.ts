@@ -49,8 +49,8 @@ const command = new Command(
         example_usage: "p/git",
         aliases: ["github", "openpepper", "repo"]
     }, 
-    async function getArguments ({ message, guild_config }) {
-        const commandLength = `${guild_config.other.prefix}${guild_config.name}`.length;
+    async function getArguments ({ message, command_name_used, guild_config }) {
+        const commandLength = `${guild_config.other.prefix}${command_name_used}`.length;
         const subcommand = message.content.slice(commandLength)?.trim();
         return { subcommand }
     },

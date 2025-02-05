@@ -59,8 +59,8 @@ const command = new Command(
         example_usage: ["p/chatbubble x=1/3 y=1/4 https://example.com/image.png", "p/chatbubble x=0.5, y=0.25 <attach your image>", "p/chatbubble left <attach your image>"],
         aliases: ["cb", "sb", "speechbubble", "bubble"]
     }, 
-    async function getArguments ({ message, command, guild_config }) {
-        const commandLength = `${guild_config.other.prefix}${command.name}`.length;
+    async function getArguments ({ message, command_name_used, guild_config }) {
+        const commandLength = `${guild_config.other.prefix}${command_name_used}`.length;
         const text = message.content.slice(commandLength)?.trim();
         return {
             url: text.match(/https?:\/\/[^\s]+/g)?.[0],

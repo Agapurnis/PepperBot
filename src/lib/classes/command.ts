@@ -90,6 +90,7 @@ export type CommandInvoker<T extends InvokerType = InvokerType> = {
 }[T]
 
 interface ExtraCommandInputData {
+    alias_used?: string;
     will_be_piped: boolean,
     piped_data?: PipedData,
     previous_response?: CommandResponse
@@ -135,6 +136,7 @@ export class CommandInput<
             : InvokerType.Interaction
         ) as I;
 
+        this.command_name_used = extra.alias_used ?? command.name;
         this.message = (invoker instanceof Message ? invoker : null) as never;
         this.interaction = (invoker instanceof Message ? null : invoker) as never;
 
@@ -147,6 +149,12 @@ export class CommandInput<
     
     is_message(): this is CommandInput<never, P, InvokerType.Message, E> { return this.invoker_type === InvokerType.Message }
     is_interaction(): this is CommandInput<F, never, InvokerType.Interaction, E> { return this.invoker_type === InvokerType.Interaction }
+
+    /**
+     * The name of the command *or it's alias* used for invocation.
+     * For the name of the command itself, see the `name` property of the `command` attached to this input.
+     */
+    command_name_used: string;
 
     invoker: CommandInvoker<I>;
     invoker_type: I;

@@ -2,7 +2,7 @@ import { Events, Message } from "discord.js";
 import commands from "../lib/command_manager";
 import { fetchGuildConfig } from "../lib/guild_config_manager";
 import * as action from "../lib/discord_action";
-import { CommandInput, CommandResponse } from "../lib/classes/command";
+import { Command, CommandInput, CommandResponse } from "../lib/classes/command";
 
 async function commandHandler(message: Message<true>) {
     if (message.author.bot) return;
@@ -11,50 +11,60 @@ async function commandHandler(message: Message<true>) {
     const prefix = config.other.prefix;
     if (!message.content.startsWith(prefix) || message.author.bot) return;
 
-    const commandPipingList = message.content.split(/(?<!\\)\|/).map(part => part.replace(/\\\|/g, '|')) || [message.content];
-    if (commandPipingList.length > 3) {
+    const segments = message.content.split(/(?<!\\)\|/).map(part => part.replace(/\\\|/g, '|')) || [message.content];
+    if (segments.length > 3) {
         await action.reply(message, "piping limit of 3 exceeded");
         return;
     }
-    let lastOutput = undefined;
-    let previousCommand = undefined;
-    let commandsInPipingList = [];
-    
-    for (const commandText of commandPipingList) {
-        const splitText = (commandText?.trim().split(" ")[0]?.trim() || commandText)?.trim();
-        const command = commandText?.trim()?.startsWith(prefix) 
-            ? splitText?.slice(prefix.length) 
-            : splitText;
-        const cmd = commands.get(command);
-        commandsInPipingList.push(cmd || command);
+
+    interface Queued {
+        command?: Command,
+        provided_name: string
     }
-    if (commandPipingList.length > 1 && config.command.disable_command_piping) {
+
+    let previous_response = undefined;
+    let previous_command = undefined;
+    let queue: Queued[] = [];
+    
+    for (const segment of segments) {
+        const first_word = segment.trim().split(" ")[0];
+        const provided_name = first_word.startsWith(prefix) 
+            ? first_word?.slice(prefix.length) 
+            : first_word;
+        const command = commands.get(provided_name);
+        queue.push({
+            provided_name,
+            command
+        });
+    }
+    if (segments.length > 1 && config.command.disable_command_piping) {
         action.reply(message, "command piping is disabled in this server");
         return;
     }
     let commandIndex = 0;
-    for (const command of commandsInPipingList) {
-        if (typeof command === "string") {
-            await action.reply(message, `${prefix}${command} doesn't exist :/`);
+    for (const { command, provided_name } of queue) {
+        if (!command) {
+            await action.reply(message, `${prefix}${provided_name} doesn't exist :/`);
             return;
         }
-        if (previousCommand && !previousCommand.pipable_to.includes(command.name)) {
-            await action.reply(message, `${prefix}${previousCommand.name} is not pipable to ${prefix}${command.name}`);
+
+        if (previous_command && !previous_command.pipable_to.includes(command.name)) {
+            await action.reply(message, `${prefix}${command.name} is not pipable to ${prefix}${provided_name}`);
             return;
         }
-        message.content = commandPipingList[commandIndex]?.trim();
+        message.content = segments[commandIndex]?.trim();
         if (!message.content.startsWith(prefix)) {
             message.content = `${prefix}${message.content.replaceAll("\\|", "|")}`;
         }
         const input: CommandInput = await CommandInput.new(message, command, undefined!, {
-            previous_response: lastOutput,
-            will_be_piped: (commandPipingList.length > 1) && (commandIndex < commandPipingList.length - 1),
+            previous_response,
+            will_be_piped: (segments.length > 1) && (commandIndex < segments.length - 1),
         });
 
         const response = await command.execute(input);
-        lastOutput = response ?? new CommandResponse({});
-        lastOutput.from = command.name;
-        previousCommand = command;
+        previous_response = response ?? new CommandResponse({});
+        previous_response.from = command.name;
+        previous_command = command;
         commandIndex++;
     }
 }

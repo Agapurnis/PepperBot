@@ -19,8 +19,8 @@ const command = new Command(
         pipable_to: ['grep'],
         example_usage: "p/git log | grep months",
     }, 
-    async function getArguments ({ message, command, guild_config }) {
-        const commandLength = `${guild_config.other.prefix}${command.name}`.length;
+    async function getArguments ({ message, command_name_used, guild_config }) {
+        const commandLength = `${guild_config.other.prefix}${command_name_used}`.length;
         const search = message.content.slice(commandLength)?.trim();
         return { search }
     },
