@@ -71,7 +71,7 @@ const command = new Command(
         }
     },
     async function execute ({ invoker, piped_data, args, guild_config }) {
-        console.log(args)
+        
         const ephemeral = guild_config.other.use_ephemeral_replies;
         let x = args.x;
         let y = args.y;
@@ -86,7 +86,7 @@ const command = new Command(
             await action.reply(invoker, { content: "invalid gravity; must be \"south\" or \"north\", not " + args.gravity, ephemeral });
             return new CommandResponse({});
         }
-        const gravity = args.gravity as Gravity ?? (Math.random() > 0.5 ? "south" : "north");
+        const gravity = args.gravity as Gravity ?? "north";
         if (!args.url && !args.image && !piped_data?.data?.chatbubble_url) {
             await action.reply(invoker, { content: "i cant make the air into a chatbubble, gimme an image", ephemeral });
             return new CommandResponse({});
@@ -104,30 +104,35 @@ const command = new Command(
             action.reply(invoker, { content: "uh oh! invalid image?", ephemeral });
             return;
         }
-        // ....i don't think it's possible for this to be null
-        // i am ignoring it
+        
+        // i don't think it's possible for this to be null/undefined
+        // i am ignoring it for now 😊
         const width = metadata.width as number;
         const height = metadata.height as number;
         
         const tailCurveDepth = 5 / 8;
         const tailWidth = 40;
         const tailShift = (xPos <= (1/3) || xPos >= (2/3)) ? Math.round(xPos) : xPos;
-        
-        const tailSvg = `
+
+        const overlayFlipped = gravity === "south";
+        const overlaySvg = `
             <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
                 <path d="
-                    M 0, 0
-                    Q ${width / 2}, ${height * yPos * tailCurveDepth} ${width}, 0
+                    M 0, ${overlayFlipped ? height : 0}
+                    Q
+                        ${width / 2},
+                        ${height * (overlayFlipped ? (1 - yPos * tailCurveDepth) : yPos * tailCurveDepth)} ${width},
+                        ${overlayFlipped ? height : 0}
                 " fill="white" stroke="none"/>
                 <polygon points="
-                    ${width * tailShift - tailWidth}, 0
-                    ${width * tailShift + tailWidth}, 0
-                    ${width * xPos}, ${height * yPos}
+                    ${width * tailShift - tailWidth}, ${overlayFlipped ? height : 0}
+                    ${width * tailShift + tailWidth}, ${overlayFlipped ? height : 0}
+                    ${width * xPos}, ${height * (overlayFlipped ? (1 - yPos) : (yPos))}
                 " fill="white" stroke="none"/>
             </svg>
         `;
         
-        const overlayBuffer = await sharp(Buffer.from(tailSvg))
+        const overlayBuffer = await sharp(Buffer.from(overlaySvg))
             .png()
             .toBuffer();
         
@@ -135,7 +140,7 @@ const command = new Command(
             .composite([{
                 input: overlayBuffer,
                 blend: "dest-out",
-                gravity,
+                gravity: "center",
                 tile: true,
             }])
             .toFormat("gif")
