@@ -1,4 +1,4 @@
-import { InteractionReplyOptions, Message, MessagePayload, MessageReplyOptions, InteractionResponse, TextChannel, EmbedBuilder, AttachmentBuilder, MessageActionRowComponentBuilder, Embed, Attachment, JSONEncodable, APIAttachment, BufferResolvable, AttachmentPayload, APIEmbed, APIActionRowComponent, APIMessageActionRowComponent, ActionRowData, MessageActionRowComponentData, MessageEditOptions, MessageCreateOptions } from "discord.js"; // this import is horrific
+import { InteractionReplyOptions, Message, MessagePayload, MessageReplyOptions, InteractionResponse, TextChannel, EmbedBuilder, AttachmentBuilder, MessageActionRowComponentBuilder, Embed, Attachment, JSONEncodable, APIAttachment, BufferResolvable, AttachmentPayload, APIEmbed, APIActionRowComponent, APIMessageActionRowComponent, ActionRowData, MessageActionRowComponentData, MessageEditOptions, MessageCreateOptions, CommandInteraction, MessageFlags } from "discord.js"; // this import is horrific
 import { Command, CommandInvoker, FormattedCommandInteraction, InvokerType } from "./classes/command";
 import { config } from "dotenv";
 config();
@@ -76,6 +76,10 @@ export function fixMessage(message: Partial<MessageInput> | string): Partial<Mes
 }
 
 export function reply<T extends CommandInvoker>(invoker: T, content: Partial<MessageInput> | string): Promise<T extends Message<true> ? Message<true> : InteractionResponse> {
+    if (invoker instanceof CommandInteraction && typeof content === "object" && content.ephemeral) {
+        (content as InteractionReplyOptions).flags = MessageFlags.Ephemeral;
+        delete content.ephemeral
+    }
     return invoker.reply(fixMessage(content)) as never
 }
 
