@@ -1,5 +1,5 @@
 import { BaseChannel, ChannelType, Collection, GuildMember, Message, StageChannel, VoiceChannel } from "discord.js";
-import { Command, CommandCategory, CommandOption, CommandOptionType, CommandResponse } from "../lib/classes/command";
+import { Command, CommandCategory, CommandOption, CommandOptionType, CommandResponse, SubcommandDeploymentApproach } from "../lib/classes/command";
 import * as action from "../lib/discord_action";
 import * as voice from "../lib/voice";
 
@@ -45,14 +45,14 @@ const join = new Command(
     {
         name: 'join',
         description: 'join a voice channel',
-        long_description: 'make the bot join a specific voice channel',
+        long_description: 'make the bot join a voice channel. defaults to the one you are in',
         category: CommandCategory.Voice,
         example_usage: "p/vc join general",
         allow_external_guild: false,
         options: [new CommandOption({
             name: "channel",
             type: CommandOptionType.Channel,
-            channel_types: [ChannelType.GuildVoice, ChannelType.GuildStageVoice]
+            channel_types: [ChannelType.GuildVoice, ChannelType.GuildStageVoice],
         })]
     },
     async function getArguments({ message, command_name_used, guild_config }) {
@@ -113,7 +113,11 @@ const command = new Command(
         long_description: 'make the bot join or leave a specific voice channel',
         category: CommandCategory.Voice,
         example_usage: "p/vc join",
-        subcommands: [join, leave],
+        subcommands: {
+            deploy: SubcommandDeploymentApproach.Split,
+            list: [join, leave],
+            self: null
+        },
         allow_external_guild: false,
         options: [
             new CommandOption({
@@ -140,6 +144,8 @@ const command = new Command(
             })
             return;
         }
+
+        console.log(args)
 
         action.reply(invoker, {
             content: "this command does nothing if you don't supply a subcommand",

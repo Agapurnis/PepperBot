@@ -1,5 +1,5 @@
 import { fetchGuildConfig, GuildConfig } from "../guild_config_manager";
-import { ApplicationCommandType, ApplicationCommandOptionType, PermissionsBitField, ApplicationIntegrationType, InteractionContextType, ChannelType, Message, CommandInteraction, GuildMemberRoleManager, Role, PermissionFlagsBits, User, Channel, Attachment, Awaitable } from "discord.js";
+import { ApplicationCommandType, ApplicationCommandOptionType, PermissionsBitField, ApplicationIntegrationType, InteractionContextType, ChannelType, Message, CommandInteraction, GuildMemberRoleManager, Role, PermissionFlagsBits, User, Channel, Attachment, Awaitable, APIApplicationCommandSubcommandOption, APIApplicationCommandSubcommandGroupOption, RESTPutAPIApplicationGuildCommandsJSONBody, RESTPostAPIChatInputApplicationCommandsJSONBody } from "discord.js";
 import * as contributors from "../../../constants/contributors.json";
 import * as action from "../discord_action";
 import * as log from "../log";
@@ -122,13 +122,13 @@ export class CommandInput<
             : I extends InvokerType.Message
                 ? P & { [K in Exclude<keyof F, keyof P>]?: undefined }
                 : F & { [K in Exclude<keyof P, keyof F>]?: undefined }
-    >(invoker: CommandInvoker<I>, command: Command<any, I, F, P>, args: A, extra: ExtraCommandInputData) {
+    >(invoker: CommandInvoker<I>, command: Command<any, any, I, F, P>, args: A, extra: ExtraCommandInputData) {
         const input = new this(invoker, command, args, extra);
         input.guild_config = await fetchGuildConfig(invoker.guildId!);
         return input
     }
     
-    private constructor(invoker: CommandInvoker<I>, public command: Command<any, I, F, P>, args: A, extra: ExtraCommandInputData) {
+    private constructor(invoker: CommandInvoker<I>, public command: Command<any, any, I, F, P>, args: A, extra: ExtraCommandInputData) {
         this.args = args;
         this.invoker = invoker;
         this.invoker_type = ((invoker instanceof Message)
@@ -206,8 +206,8 @@ export class CommandAccess {
         };
     }
 
-    public test(message: Message | FormattedCommandInteraction) {
-        const { author, member, channel, guild } = message;
+    public test(invoker: CommandInvoker) {
+        const { author, member, channel, guild } = invoker;
         const userRoles = member?.roles instanceof GuildMemberRoleManager ? member.roles.cache.map(role => role.id) : [];
         const guildId = guild?.id || "";
         const channelId = channel?.id || "";
@@ -252,6 +252,7 @@ export class CommandOption<
     description = "no description";
     choices: T extends CommandOptionType.ChoicesUsable ? CommandOptionChoice[] : [] = [] as never;
     channel_types?: ChannelType[]
+    private options?: CommandOption[];
 
     /* ↑↑↑ discords shit ↓↓↓ my shit */
     deployed: boolean = true;
@@ -285,7 +286,9 @@ export class CommandOption<
     }
 
     toJSON() {
-        return pick(this, ["name", "description", "type", "required", "choices", "channel_types"])
+        const json = pick(this, ["name", "description", "type", "required", "options" as never, "choices", "channel_types"]) as this;
+        if (json.options) json.options = json.options.map(option => option.toJSON());
+        return json;
     }
 }
 
@@ -305,14 +308,74 @@ function defaultCommandFunction({ command = "" }) {
     log.error("undefined command function for " + command)
 }
 
+export enum SubcommandDeploymentApproach {
+    /**
+     * Don't use any native Discord subcommand stuff; instead, use command with a "subcommand" parameter that will take in the arguments for any/all of its subcommands.
+     * 
+     * Benefits:
+     *  - Doesn't clutter the slash command UI with many different subcommands.
+     *  - Supports subcommand aliases instead of being restricted to canonical names.
+     *  - Can invoke without a subcommand.
+     *
+     * Drawbacks:
+     *  - Subcommands cannot have arguments that are required.
+     *  - The names for the arguments of each subcommand must be unique on a global scale.
+     */
+    Merge,
+
+    /**
+     * Use the native Discord subcommand system.
+     * 
+     * Benefits:
+     *  - Clear separation for the arguments of each subcommand; can share names and have required options
+     *  
+     * Drawbacks:
+     *  - Can clutter the command list with many subcommands.
+     *  - Invoking the command "without" a subcommand can't be done; the `self` property must be set to create a name for the subcommand that will invoke the normal command.
+     */
+    Split,
+
+    /**
+     * Don't deploy subcommands.
+     * This option is only valid if the command itself is not being deployed.
+     */
+    None
+}
+
+
+interface MergeSubcommandsSpecification<O extends CommandOption<ApplicationCommandOptionType, string, any>[] = CommandOption<ApplicationCommandOptionType, string, any>[]> {
+    deploy: SubcommandDeploymentApproach.Merge,
+    list: Command<O, any, any, any, any>[],
+    self?: never;
+}
+
+interface SplitSubcommandsSpecification {
+    deploy: SubcommandDeploymentApproach.Split,
+    list: Command<any, any, any, any, any>[],
+
+    /**
+     * Name for the "sub"-command which is actually this command itself.
+     * 
+     * If set to null, this root command will not have any method of direct invocation by slash commands.
+     */
+    self: string | null,
+}
+
+type SubcommandsSpecification<T extends SubcommandDeploymentApproach = SubcommandDeploymentApproach, O extends CommandOption<ApplicationCommandOptionType, string, any>[] = CommandOption<ApplicationCommandOptionType, string, any>[]> = {
+    [SubcommandDeploymentApproach.Merge]: MergeSubcommandsSpecification & { list: Command<O, any, any, any, any>[] },
+    [SubcommandDeploymentApproach.Split]: SplitSubcommandsSpecification & { list: Command<any, any, any, any, any>[] },
+    [SubcommandDeploymentApproach.None]: { deploy: SubcommandDeploymentApproach.None, list: Command<any, any, any, any, any>[] }
+}[T]
+
 export class Command<
     const S extends CommandOption<CommandOptionType, string, any>[] = CommandOption[], // slash command argument definition
+    const D extends SubcommandsSpecification = SubcommandsSpecification<SubcommandDeploymentApproach.None, []>,
     const I extends InvokerType = InvokerType, // invocation methods 
-    const F extends AnyObject = S["length"] extends 0 ? EmptyObject : CommandOption.ToObject<S>, // inferred arguments from slash command definition + subcommand
+    const F extends AnyObject = S["length"] extends 0 ? EmptyObject : CommandOption.ToObject<D extends MergeSubcommandsSpecification<infer O extends CommandOption<any, any, false>[]> ? [...O, ...S] : S>, // inferred arguments from slash command definition + subcommand
     const P extends AnyObject = F, // arguments from manual parsing
 > {
     name!: string;
-    type = ApplicationCommandType.ChatInput;
+    type = ApplicationCommandType.ChatInput
     description = "no description";
     options: S = [] as unknown as S;
     default_member_permissions?: PermissionsBitField;
@@ -338,7 +401,7 @@ export class Command<
      */
     input_types: I[] = [ InvokerType.Interaction, InvokerType.Message ] as I[];
     allow_external_guild = false; // should it be usable in guilds without administrator permission? (thats the only way to detect it)
-    subcommands: Command<any, any, any, any>[] = [] as any;
+    subcommands?: D;
     pipable_to: string[] = []; // array of command names which output may be piped to
     contributors: Contributor[] = [contributors.ayeuhugyu];
     subcommand_argument = "subcommand"
@@ -346,12 +409,14 @@ export class Command<
     category: CommandCategory = CommandCategory.Other;
     execute: CommandFunction<F, P, I> = defaultCommandFunction as never;
 
-    toJSON() {
-       return pick(this, ["name", "description", "type", "options", "default_member_permissions", "integration_types", ]);
+    toJSON(): Record<string, unknown> {
+       const json = pick(this, ["name", "description", "type", "options", "default_member_permissions", "integration_types", "nsfw"]);
+       json.options = json.options.map(option => option.toJSON()) as never;
+       return json;
     }
 
     constructor(
-        data: Partial<Omit<Command<S, I, F, P>, "name">> & { name: string },
+        data: Partial<Omit<Command<S, D, I, F, P>, "name">> & { name: string },
         private parse_arguments: GetArgumentsFunction<P, I>,
         private execute_internal: ExecuteFunction<F, P, I>
     ) {
@@ -373,6 +438,33 @@ export class Command<
 
         if (this.validation_errors.length > 0) {
             return;
+        }
+
+        switch (this.subcommands?.deploy) {
+            case SubcommandDeploymentApproach.None: { break }
+            case SubcommandDeploymentApproach.Split: {
+                const own_options = this.options;
+                this.options = this.subcommands.list.map(subcommand  => new CommandOption({
+                    ...pick(subcommand, ["name", "description", "options"]),
+                    type: ApplicationCommandOptionType.Subcommand,
+                })) as never;
+                if (this.subcommands.self) {
+                    const data = pick(this, ["name", "description", "options"]);
+                    data.name = this.subcommands.self;
+                    data.options = own_options.filter(({ name }) => name !== this.subcommand_argument) as never;
+                    this.options.push(new CommandOption({
+                        ...data,
+                        type: ApplicationCommandOptionType.Subcommand,
+                    }))
+                }
+                break
+            }
+            case SubcommandDeploymentApproach.Merge: {
+                for (const command of this.subcommands.list) {
+                    this.options.push(...command.options)
+                }
+                break
+            }
         }
         // #region COMMAND EXECUTION
         this.execute = async (input: CommandInput<F, P, I, false>) => {
@@ -423,7 +515,7 @@ export class Command<
             input.piped_data = new PipedData(input.previous_response?.from, input.previous_response?.pipe_data)
 
             if (this.subcommand_argument in input.args) {
-                const subcommand = this.subcommands.find(subcommand => (
+                const subcommand = this.subcommands?.list.find(subcommand => (
                     subcommand.name === input.args[this.subcommand_argument] || 
                     subcommand.aliases.includes(input.args[this.subcommand_argument])
                 ));

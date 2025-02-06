@@ -3,6 +3,7 @@ import fs from "fs";
 import * as log from "./log";
 import { client } from "../bot";
 import { Command, InvokerType, ValidationCheck } from "./classes/command";
+import { inspect } from "util";
 
 const enum CommandEntryType {
     /**
@@ -71,7 +72,7 @@ export class CommandManager {
                 this.assign(command, CommandEntryType.CommandAlias, alias)
             }
 
-            const subcommandDescendants = Array.from(command.subcommands); // shallow clone so deeper instances can be appended as a queue
+            const subcommandDescendants = Array.from<Command>(command.subcommands?.list ?? []); // shallow clone so deeper instances can be appended as a queue
 
             while (subcommandDescendants.length !== 0) {
                 const subcommand = subcommandDescendants.pop()!;
@@ -80,7 +81,7 @@ export class CommandManager {
                     this.assign(subcommand, CommandEntryType.SubcommandRootAlias, alias);
                 }
 
-                subcommandDescendants.push(...subcommand.subcommands);
+                subcommandDescendants.push(...subcommand.subcommands?.list ?? []);
             }
          
             log.info(`loaded command ${command.name} in ${(performance.now() - start).toFixed(3)}ms`);

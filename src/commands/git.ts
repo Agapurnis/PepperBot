@@ -1,5 +1,5 @@
 import { Collection, Message } from "discord.js";
-import { Command, CommandCategory, CommandOption, CommandOptionType, CommandResponse } from "../lib/classes/command";
+import { Command, CommandCategory, CommandOption, CommandOptionType, CommandResponse, SubcommandDeploymentApproach } from "../lib/classes/command";
 import * as action from "../lib/discord_action";
 import simpleGit from "simple-git";
 import { textToAttachment } from "../lib/attachment_manager";
@@ -11,7 +11,6 @@ const git_log = new Command({
         category: CommandCategory.Info,
         pipable_to: ['grep'],
         root_aliases: ['gitlog'],
-        subcommands: [],
         example_usage: "p/git log",
     }, 
     async function getArguments () {
@@ -34,16 +33,17 @@ const command = new Command(
         category: CommandCategory.Info,
         pipable_to: ['grep'],
         argument_order: "<subcommand>",
-        subcommands: [
-            git_log
-        ],
+        subcommands: {
+            deploy: SubcommandDeploymentApproach.Merge,
+            list: [git_log]
+        },
         options: [
             new CommandOption({
                 name: 'subcommand',
                 description: 'the subcommand to run',
                 type: CommandOptionType.String,
                 required: false,
-                choices: git_log.subcommands.map(subcommand => { return { name: subcommand.name, value: subcommand.name } })
+                choices: [{ name: "log", value: "log" }]
             })
         ],
         example_usage: "p/git",
