@@ -15,10 +15,13 @@
         "@types/express": "^5.0.0",
         "@types/fs-extra": "^11.0.4",
         "@types/mathjs": "^9.4.2",
+        "@types/mime-types": "^2.1.4",
         "@types/node": "^22.12.0",
         "@types/shelljs": "^0.8.15",
+        "@types/turndown": "^5.0.5",
         "body-parser": "^1.20.3",
         "bun": "^1.2.2",
+        "cheerio": "^1.0.0",
         "discord-api-types": "^0.37.118",
         "discord.js": "^14.17.3",
         "dotenv": "^16.4.7",
@@ -26,10 +29,13 @@
         "fs-extra": "^11.3.0",
         "knex": "^3.1.0",
         "mathjs": "^14.2.0",
+        "mime-types": "^2.1.35",
+        "openai": "^4.83.0",
         "sharp": "^0.33.5",
         "shelljs": "^0.8.5",
         "simple-git": "^3.27.0",
-        "sqlite3": "^5.1.7"
+        "sqlite3": "^5.1.7",
+        "turndown": "^7.2.0"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",

@@ -11,6 +11,16 @@ the biggest new feature:
   - p/eval can now be piped to grep
   - p/chatbubble now has piping support, nothing uses it yet though
 
+**gpt stuff:**
+
+- tool calls have been improved, instead of using my own system i am yet again using another openai feature. i've found one that allows for tools but without the usage of the stupid assistants api, resulting in only a little bit slower response times, compared to the much slower times the last time i tried this. this has several benefits:
+  - tool calls can no longer be messed up, so never again will you see $EXEC_TOOL stuff
+  - custom prompts can now use tool calls
+  - tool calls will take less time to process because the AI doesn't need to spend time writing $EXEC_TOOL or the text he likes to write around it
+- gpt conversations are now MUCH more customizable via the use of p/gpt setparam
+- gpt responses now use openai's seeding feature so they can be reproduced
+- new "random" tool allows gpt to generate random numbers
+
 **actual content:**
 
 - command data has been overhauled
@@ -25,6 +35,7 @@ the biggest new feature:
     - commands now have argument orders
 - bots can no longer execute any commands. this was just yet another value i had to think about if it would cause problems or not
 - p/vc join & leave now check for the "speak" permission instead of the "connect" permission
+- new p/snowflake allows you to extract data from discord snowflakes (user/channel/guild/message/anything's id)
 
 **technical details:**
 
@@ -37,3 +48,4 @@ the biggest new feature:
 - data passed to commands is no longer a list of 4 arguments, instead just one object you can choose what you want from. that also lets me reasonably pass a LOT more data to them
 - im no longer using the slash command builders because they are annoying and i hate them i hate them i hate them get them out of my sight
 - voice connections are now managed by GuildVoiceManagers which automatically create audio players
+- the GPT script's file type checker thing no longer uses my own stupid thing and instead now uses mime-types

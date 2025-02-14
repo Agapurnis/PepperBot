@@ -109,7 +109,7 @@ export class CommandInput<
 > implements ExtraCommandInputData {
     args: A;
     message: I extends InvokerType.Message ? Message<true> : null;
-    interaction: I extends InvokerType.Interaction ? CommandInvoker : null;
+    interaction: I extends InvokerType.Interaction ? FormattedCommandInteraction : null;
 
     // async constructor
     public static async new<
@@ -137,8 +137,15 @@ export class CommandInput<
         ) as I;
 
         this.command_name_used = extra.alias_used ?? command.name;
-        this.message = (invoker instanceof Message ? invoker : null) as never;
-        this.interaction = (invoker instanceof Message ? null : invoker) as never;
+        this.message = (invoker instanceof Message ? invoker : null) as I extends InvokerType.Message ? Message<true> : null;
+        this.interaction = (invoker instanceof Message ? null : invoker) as I extends InvokerType.Interaction ? FormattedCommandInteraction : null;
+
+        const external = this.interaction?.memberPermissions?.has(PermissionFlagsBits.UseExternalApps);
+        // We don't need to account for the guild being from other shards since we won't be processing it on this shard in the first place.
+        this.forced_ephemeral = external ? (
+            this.interaction!.guildId !== null && // has an associated guild id
+            this.interaction!.client.guilds.cache.find(g => g.id === this.interaction!.guildId) === undefined // but not one this shard has cached
+        ) : false;
 
         Object.assign(this, extra)
     }
@@ -164,6 +171,11 @@ export class CommandInput<
     previous_response: CommandResponse | undefined;
     piped_data?: PipedData;
     will_be_piped!: boolean;
+
+    /**
+     * If the bot isn't in the guild / the guild is undefined, and the member does not have permissions to use external apps. 
+     */
+    forced_ephemeral: boolean
 }
 
 export interface Contributor {
@@ -393,7 +405,7 @@ export class Command<
      */
     root_aliases: string[] = [];
     long_description = "no description";
-    argument_order: string = ""; // this is not an array because some commands dont require argument orders or have Strange Ones, but the general convention is to just list the arguments in the order the getArguments function looks for them and then put <> around it, ex. <arg1> <arg2>
+    argument_order: string = ""; // this is not an array because some commands don't require argument orders or have Strange Ones, but the general convention is to just list the arguments in the order the getArguments function looks for them and then put <> around it, ex. <arg1> <arg2>
     example_usage: string | string[] = ""; // example usage so its easy to know how to use it
     access = new CommandAccess();
     /**

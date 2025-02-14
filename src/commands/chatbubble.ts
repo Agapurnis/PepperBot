@@ -39,22 +39,28 @@ const command = new Command(
             new CommandOption({
                 name: 'x',
                 description: 'x position of the chatbubble',
+                long_description: 'an expression representing the x position of the end of the tail of the chatbubble. prefixed with "x=", alternatively just type "left", "center", or "right" for 1/4, 1/2, or 3/4 respectively',
                 required: false,
                 type: CommandOptionType.String
             }),
             new CommandOption({
                 name: 'y',
                 description: 'y position of the chatbubble',
+                long_description: 'an expression representing the y position of the end of the tail of the chatbubble. prefixed with "y="',
                 required: false,
                 type: CommandOptionType.String
             }),
-            // new CommandOption({
-            //     name: 'gravity',
-            //     description: 'gravity of the chatbubble',
-            //     required: false,
-            //     type: CommandOptionType.String,
-            //     choices: VALID_GRAVITY.map(value => ({ value, name: value }))
-            // }),
+            new CommandOption({
+                name: 'gravity',
+                description: 'gravity of the chatbubble',
+                long_description: 'gravity of the chatbubble; whether the chatbubble should be placed at the top or bottom of the image. north is top, south is bottom',
+                required: false,
+                type: CommandOptionType.String,
+                choices: [
+                    { name: 'south', value: 'south' },
+                    { name: 'north', value: 'north' }
+                ]
+            }),
         ],
         example_usage: ["p/chatbubble x=1/3 y=1/4 https://example.com/image.png", "p/chatbubble x=0.5, y=0.25 <attach your image>", "p/chatbubble left <attach your image>"],
         aliases: ["cb", "sb", "speechbubble", "bubble"]
@@ -71,7 +77,6 @@ const command = new Command(
         }
     },
     async function execute ({ invoker, piped_data, args, guild_config }) {
-        
         const ephemeral = guild_config.other.use_ephemeral_replies;
         let x = args.x;
         let y = args.y;
@@ -147,7 +152,7 @@ const command = new Command(
             .toBuffer();
         
         action.reply(invoker, { 
-            content: "here's your chat bubble",
+            content: `here's your chat bubble\n x=\`${x ?? xPos}\`, y=\`${y ?? yPos}\`, gravity=\`${gravity}\``,
             files: [new AttachmentBuilder(outputBuffer, { name: "bubble.gif" })]
         })
     }

@@ -3,6 +3,25 @@ import commands from "../lib/command_manager";
 import { fetchGuildConfig } from "../lib/guild_config_manager";
 import * as action from "../lib/discord_action";
 import { Command, CommandInput, CommandResponse } from "../lib/classes/command";
+import { respond, GPTProcessor } from "../lib/gpt";
+
+async function gptHandler(message: Message<true>) {
+    if (!message.mentions || !message.mentions.has(message.client.user?.id)) return;
+
+    const gconfig = await fetchGuildConfig(message.guild?.id)
+    const prefix = gconfig.other.prefix;
+
+    if (gconfig.AI.disable_responses) return;
+    if (gconfig.AI.blacklisted_channels.includes(message.channel.id)) return;
+    if (message.author.bot) return;
+    if (message.content.startsWith(prefix)) return;
+
+    const processor = new GPTProcessor();
+    processor.repliedMessage = message;
+    processor.sentMessage = await action.reply(message, { content: "processing...", ephemeral: true }) as Message;
+
+    await respond(message, processor);
+}
 
 async function commandHandler(message: Message<true>) {
     if (message.author.bot) return;
@@ -73,6 +92,7 @@ export default {
     name: Events.MessageCreate,
     async execute(message: Message<true>) {
         return await Promise.all([
+            gptHandler(message),
             commandHandler(message),
         ])
     }
